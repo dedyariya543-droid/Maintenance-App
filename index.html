@@ -27,26 +27,18 @@ input, select, button {
 
 button { background:#007bff; color:#fff; font-weight:bold; border:none; }
 
-.reset { background:#dc3545; }
-
-.status-item {
-  padding:10px;
-  margin-top:8px;
-  border-radius:8px;
-}
-
+.status-item { padding:10px; margin-top:8px; border-radius:8px; }
 .ok { background:#e6f9ec; color:#2e7d32; }
 .soon { background:#fff4e5; color:#ef6c00; }
 .overdue { background:#fdecea; color:#c62828; }
 
 .section-title { margin-top:10px; font-weight:bold; }
-canvas { margin-top:10px; background:#fff; border-radius:10px; }
 </style>
 </head>
 
 <body>
 
-<h2>🔧 MAINTENANCE CHECK FOR BEAT DELUXE</h2>
+<h2>🔧 Maintenance System (Cloud)</h2>
 
 <div class="card">
   <input type="number" id="km" placeholder="Masukkan Odometer (km)">
@@ -59,7 +51,6 @@ canvas { margin-top:10px; background:#fff; border-radius:10px; }
 
 <div class="card">
   <h3>Update Service</h3>
-
   <input type="date" id="date">
 
   <select id="item">
@@ -67,31 +58,35 @@ canvas { margin-top:10px; background:#fff; border-radius:10px; }
     <option value="oil_final">Oil Final</option>
     <option value="spark_plug">Spark Plug</option>
     <option value="air_filter_replace">Air Filter Replace</option>
-    <option value="drive_belt">Drive Belt / V-Belt</option>
-    <option value="cvt_roller">Roller CVT</option>
-
-    <option value="routine_check">Routine Check</option>
-    <option value="air_filter_clean">Air Filter Clean</option>
-    <option value="brake_pad">Brake Pad</option>
-    <option value="drive_belt_check">Drive Belt Check</option>
-    <option value="cvt_roller_check">CVT Roller Check</option>
-
+    <option value="drive_belt">Drive Belt</option>
+    <option value="cvt_roller">CVT Roller</option>
     <option value="brake_fluid">Brake Fluid</option>
     <option value="battery">Battery</option>
   </select>
 
   <button onclick="updateService()">UPDATE</button>
-
-  <button onclick="resetItem()">RESET ITEM</button>
-  <button onclick="resetAll()" class="reset">RESET ALL DATA</button>
 </div>
 
-<div class="card">
-  <h3>📊 Trend Grafik (Oil Engine)</h3>
-  <canvas id="chart" width="300" height="200"></canvas>
-</div>
+<script type="module">
 
-<script>
+// ===== FIREBASE IMPORT =====
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs }
+from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ===== CONFIG =====
+const firebaseConfig = {
+  apiKey: "AIzaSyBHmj0TTEJA1gsaApcp2v5EwIcZVmhpzgw",
+  authDomain: "maintenance-app-3ed93.firebaseapp.com",
+  projectId: "maintenance-app-3ed93",
+  storageBucket: "maintenance-app-3ed93.firebasestorage.app",
+  messagingSenderId: "923977181209",
+  appId: "1:923977181209:web:9ab0e2a61d0b9f19fc2288"
+};
+
+// ===== INIT =====
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 // ===== RULES =====
 const replaceRules = {
@@ -103,65 +98,38 @@ const replaceRules = {
   cvt_roller: 22000
 };
 
-const inspectRules = {
-  routine_check: 4000,
-  air_filter_clean: 4000,
-  brake_pad: 4000,
-  drive_belt_check: 8000,
-  cvt_roller_check: 8000
-};
-
 const timeRules = {
   brake_fluid: 730,
   battery: 600
 };
 
-// ===== STORAGE =====
-function getData() {
-  return JSON.parse(localStorage.getItem("data") || "{}");
-}
-
-function saveData(data) {
-  localStorage.setItem("data", JSON.stringify(data));
-}
-
-// ===== UPDATE =====
-function updateService() {
+// ===== SAVE =====
+window.updateService = async function() {
   let km = parseInt(document.getElementById("km").value);
   let item = document.getElementById("item").value;
-  let dateInput = document.getElementById("date").value;
+  let date = document.getElementById("date").value;
 
-  if (isNaN(km)) return alert("Masukkan KM");
-  if (!dateInput) return alert("Pilih tanggal");
+  if (isNaN(km) || !date) return alert("Lengkapi input");
 
-  let data = getData();
-  if (!data[item]) data[item] = [];
+  await addDoc(collection(db, "service"), {
+    item, km, date, created: Date.now()
+  });
 
-  data[item].push({ km: km, date: dateInput });
+  alert("✅ Data tersimpan ke cloud");
+};
 
-  saveData(data);
-  alert("✅ Service tersimpan");
-}
+// ===== GET DATA =====
+async function getData() {
+  let snapshot = await getDocs(collection(db, "service"));
+  let data = {};
 
-// ===== RESET =====
-function resetItem() {
-  let item = document.getElementById("item").value;
-  let data = getData();
+  snapshot.forEach(doc => {
+    let d = doc.data();
+    if (!data[d.item]) data[d.item] = [];
+    data[d.item].push(d);
+  });
 
-  if (!data[item]) return alert("Tidak ada data");
-
-  if (confirm("Hapus data " + item + "?")) {
-    delete data[item];
-    saveData(data);
-    alert("Data dihapus");
-  }
-}
-
-function resetAll() {
-  if (confirm("⚠️ Hapus SEMUA data?")) {
-    localStorage.removeItem("data");
-    alert("Semua data dihapus");
-  }
+  return data;
 }
 
 // ===== CALC =====
@@ -174,146 +142,69 @@ function calcRemaining(km, history, interval) {
   return interval - (km - last);
 }
 
-// ===== TREND =====
-function getTrend(item) {
-  let data = getData();
-  if (!data[item] || data[item].length < 2) return "Belum cukup data";
-  let last = data[item].slice(-1)[0].km;
-  let prev = data[item].slice(-2)[0].km;
-  return (last - prev) + " km";
-}
-
-// ===== TIME BASED =====
-function checkTime() {
-  let data = getData();
-  let output = "";
-
-  for (let item in timeRules) {
-    let daysLimit = timeRules[item];
-    let history = data[item];
-
-    let status="", css="", nextText="";
-
-    if (!history || history.length === 0) {
-      status = "🟡 NO DATA";
-      css = "soon";
-      nextText = "Tidak ada histori";
-    } else {
-      let lastDate = new Date(history.slice(-1)[0].date + "T00:00:00");
-      let now = new Date();
-
-      let used = (now - lastDate) / (1000*60*60*24);
-      let remaining = Math.floor(daysLimit - used);
-
-      let nextDate = new Date(lastDate);
-      nextDate.setDate(nextDate.getDate() + daysLimit);
-
-      let nextFormatted = nextDate.toLocaleDateString("id-ID", {
-        year: "numeric",
-        month: "long",
-        day: "numeric"
-      });
-
-      nextText = "Next: " + nextFormatted;
-
-      if (remaining <= 0) {
-        status = "🔴 SERVICE NOW";
-        css = "overdue";
-      } else if (remaining <= 30) {
-        status = "🟡 SOON (" + remaining + " hari)";
-        css = "soon";
-      } else {
-        status = "🟢 OK (" + remaining + " hari)";
-        css = "ok";
-      }
-    }
-
-    output += `
-    <div class="status-item ${css}">
-      <b>${format(item)}</b><br>
-      ${status}<br>
-      ${nextText}
-    </div>`;
+// ===== TIME =====
+function calcTime(item, history, daysLimit) {
+  if (!history || history.length === 0) {
+    return `<div class="status-item soon">${item} → NO DATA</div>`;
   }
 
-  return output;
-}
+  let last = new Date(history.slice(-1)[0].date + "T00:00:00");
+  let now = new Date();
 
-// ===== GRAPH =====
-function drawChart() {
-  let canvas = document.getElementById("chart");
-  let ctx = canvas.getContext("2d");
+  let used = (now - last) / (1000*60*60*24);
+  let remain = Math.floor(daysLimit - used);
 
-  let data = getData();
-  let arr = data.oil_engine || [];
+  let next = new Date(last);
+  next.setDate(next.getDate() + daysLimit);
 
-  ctx.clearRect(0,0,300,200);
-  ctx.beginPath();
-  ctx.moveTo(0,180);
+  let nextText = next.toLocaleDateString("id-ID");
 
-  arr.forEach((d,i)=>{
-    ctx.lineTo(i*40,180 - d.km/100);
-  });
+  let status = remain <= 0 ? "🔴 GANTI" :
+               remain <= 30 ? "🟡 SEGERA" :
+               "🟢 OK";
 
-  ctx.strokeStyle = "blue";
-  ctx.stroke();
+  let css = remain <= 0 ? "overdue" :
+            remain <= 30 ? "soon" : "ok";
+
+  return `<div class="status-item ${css}">
+    ${item} → ${status} (${remain} hari)<br>
+    Next: ${nextText}
+  </div>`;
 }
 
 // ===== MAIN =====
-function check() {
+window.check = async function() {
   let km = parseInt(document.getElementById("km").value);
   if (isNaN(km)) return alert("Masukkan KM");
 
-  let data = getData();
+  let data = await getData();
   let output = "";
 
-  output += "<div class='section-title'>🔁 Replacement</div>";
+  output += "<div class='section-title'>KM Based</div>";
 
   for (let item in replaceRules) {
     let rem = calcRemaining(km, data[item], replaceRules[item]);
 
-    let status="", css="";
-    if (rem <= 0) { status="🔴 REPLACE NOW"; css="overdue"; }
-    else if (rem <= 500) { status="🟡 SOON"; css="soon"; }
-    else { status="🟢 OK"; css="ok"; }
+    let status = rem <= 0 ? "🔴 GANTI" :
+                 rem <= 500 ? "🟡 SEGERA" :
+                 "🟢 OK";
+
+    let css = rem <= 0 ? "overdue" :
+              rem <= 500 ? "soon" : "ok";
 
     output += `<div class="status-item ${css}">
-      <b>${format(item)}</b><br>
-      ${status} (sisa ${rem} km)
+      ${item} → ${status} (sisa ${rem} km)
     </div>`;
   }
 
-  output += "<div class='section-title'>🔍 Inspection</div>";
+  output += "<div class='section-title'>Time Based</div>";
 
-  for (let item in inspectRules) {
-    let rem = calcRemaining(km, data[item], inspectRules[item]);
-
-    let status="", css="";
-    if (rem <= 0) { status="🔴 CHECK NOW"; css="overdue"; }
-    else if (rem <= 200) { status="🟡 SOON"; css="soon"; }
-    else { status="🟢 OK"; css="ok"; }
-
-    output += `<div class="status-item ${css}">
-      <b>${format(item)}</b><br>
-      ${status} (sisa ${rem} km)
-    </div>`;
+  for (let item in timeRules) {
+    output += calcTime(item, data[item], timeRules[item]);
   }
-
-  output += "<div class='section-title'>📈 Trend</div>";
-  output += "Oil Engine interval terakhir: " + getTrend("oil_engine");
-
-  output += "<div class='section-title'>⏱️ Time-Based</div>";
-  output += checkTime();
 
   document.getElementById("output").innerHTML = output;
-
-  drawChart();
-}
-
-// ===== FORMAT =====
-function format(t) {
-  return t.replace(/_/g," ").toUpperCase();
-}
+};
 
 </script>
 
