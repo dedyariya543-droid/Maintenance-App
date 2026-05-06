@@ -26,8 +26,14 @@ input, select, button {
 }
 
 button { background:#007bff; color:#fff; font-weight:bold; border:none; }
+.reset { background:#dc3545; }
 
-.status-item { padding:10px; margin-top:8px; border-radius:8px; }
+.status-item {
+  padding:10px;
+  margin-top:8px;
+  border-radius:8px;
+}
+
 .ok { background:#e6f9ec; color:#2e7d32; }
 .soon { background:#fff4e5; color:#ef6c00; }
 .overdue { background:#fdecea; color:#c62828; }
@@ -38,7 +44,7 @@ button { background:#007bff; color:#fff; font-weight:bold; border:none; }
 
 <body>
 
-<h2>🔧 Maintenance System (Cloud)</h2>
+<h2>🔧 MAINTENANCE CHECK FOR BEAT DELUXE</h2>
 
 <div class="card">
   <input type="number" id="km" placeholder="Masukkan Odometer (km)">
@@ -60,6 +66,11 @@ button { background:#007bff; color:#fff; font-weight:bold; border:none; }
     <option value="air_filter_replace">Air Filter Replace</option>
     <option value="drive_belt">Drive Belt</option>
     <option value="cvt_roller">CVT Roller</option>
+    <option value="routine_check">Routine Check</option>
+    <option value="air_filter_clean">Air Filter Clean</option>
+    <option value="brake_pad">Brake Pad</option>
+    <option value="drive_belt_check">Drive Belt Check</option>
+    <option value="cvt_roller_check">CVT Roller Check</option>
     <option value="brake_fluid">Brake Fluid</option>
     <option value="battery">Battery</option>
   </select>
@@ -69,12 +80,11 @@ button { background:#007bff; color:#fff; font-weight:bold; border:none; }
 
 <script type="module">
 
-// ===== FIREBASE IMPORT =====
+// ===== FIREBASE =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs }
+import { getFirestore, collection, getDocs, setDoc, doc }
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// ===== CONFIG =====
 const firebaseConfig = {
   apiKey: "AIzaSyBHmj0TTEJA1gsaApcp2v5EwIcZVmhpzgw",
   authDomain: "maintenance-app-3ed93.firebaseapp.com",
@@ -84,7 +94,6 @@ const firebaseConfig = {
   appId: "1:923977181209:web:9ab0e2a61d0b9f19fc2288"
 };
 
-// ===== INIT =====
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -98,39 +107,57 @@ const replaceRules = {
   cvt_roller: 22000
 };
 
+const inspectRules = {
+  routine_check: 4000,
+  air_filter_clean: 4000,
+  brake_pad: 4000,
+  drive_belt_check: 8000,
+  cvt_roller_check: 8000
+};
+
 const timeRules = {
   brake_fluid: 730,
   battery: 600
 };
 
-// ===== SAVE =====
-window.updateService = async function() {
-  let km = parseInt(document.getElementById("km").value);
-  let item = document.getElementById("item").value;
-  let date = document.getElementById("date").value;
-
-  if (isNaN(km) || !date) return alert("Lengkapi input");
-
-  await addDoc(collection(db, "service"), {
-    item, km, date, created: Date.now()
-  });
-
-  alert("✅ Data tersimpan ke cloud");
-};
-
 // ===== GET DATA =====
 async function getData() {
-  let snapshot = await getDocs(collection(db, "service"));
+  let snapshot = await getDocs(collection(db, "maintenance"));
   let data = {};
 
-  snapshot.forEach(doc => {
-    let d = doc.data();
-    if (!data[d.item]) data[d.item] = [];
-    data[d.item].push(d);
+  snapshot.forEach(d => {
+    data[d.id] = d.data();
   });
 
   return data;
 }
+
+// ===== SAVE =====
+async function saveData(data) {
+  for (let key in data) {
+    await setDoc(doc(db, "maintenance", key), data[key]);
+  }
+}
+
+// ===== UPDATE =====
+window.updateService = async function() {
+  let km = parseInt(document.getElementById("km").value);
+  let item = document.getElementById("item").value;
+  let dateInput = document.getElementById("date").value;
+
+  if (isNaN(km)) return alert("Masukkan KM");
+  if (!dateInput) return alert("Pilih tanggal");
+
+  let data = await getData();
+
+  if (!data[item]) data[item] = [];
+
+  data[item].push({ km: km, date: dateInput });
+
+  await saveData(data);
+
+  alert("✅ Tersimpan ke Firebase");
+};
 
 // ===== CALC =====
 function calcRemaining(km, history, interval) {
@@ -148,7 +175,7 @@ function calcTime(item, history, daysLimit) {
     return `<div class="status-item soon">${item} → NO DATA</div>`;
   }
 
-  let last = new Date(history.slice(-1)[0].date + "T00:00:00");
+  let last = new Date(history.slice(-1)[0].date);
   let now = new Date();
 
   let used = (now - last) / (1000*60*60*24);
@@ -156,8 +183,6 @@ function calcTime(item, history, daysLimit) {
 
   let next = new Date(last);
   next.setDate(next.getDate() + daysLimit);
-
-  let nextText = next.toLocaleDateString("id-ID");
 
   let status = remain <= 0 ? "🔴 GANTI" :
                remain <= 30 ? "🟡 SEGERA" :
@@ -168,7 +193,7 @@ function calcTime(item, history, daysLimit) {
 
   return `<div class="status-item ${css}">
     ${item} → ${status} (${remain} hari)<br>
-    Next: ${nextText}
+    Next: ${next.toLocaleDateString("id-ID")}
   </div>`;
 }
 
@@ -180,7 +205,7 @@ window.check = async function() {
   let data = await getData();
   let output = "";
 
-  output += "<div class='section-title'>KM Based</div>";
+  output += "<div class='section-title'>Replacement</div>";
 
   for (let item in replaceRules) {
     let rem = calcRemaining(km, data[item], replaceRules[item]);
@@ -193,7 +218,24 @@ window.check = async function() {
               rem <= 500 ? "soon" : "ok";
 
     output += `<div class="status-item ${css}">
-      ${item} → ${status} (sisa ${rem} km)
+      ${item} → ${status} (${rem} km)
+    </div>`;
+  }
+
+  output += "<div class='section-title'>Inspection</div>";
+
+  for (let item in inspectRules) {
+    let rem = calcRemaining(km, data[item], inspectRules[item]);
+
+    let status = rem <= 0 ? "🔴 CHECK" :
+                 rem <= 200 ? "🟡 SEGERA" :
+                 "🟢 OK";
+
+    let css = rem <= 0 ? "overdue" :
+              rem <= 200 ? "soon" : "ok";
+
+    output += `<div class="status-item ${css}">
+      ${item} → ${status} (${rem} km)
     </div>`;
   }
 
